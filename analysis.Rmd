@@ -1,7 +1,7 @@
 ---
-title: "Title of Analysis Goes Here"
-author: "Your Name (netid@illinois.edu)"
-date: "Insert Date Here"
+title: "Credit Card Fraud Detection Tool"
+author: "Akash Sukhija (sukhija4@illinois.edu)"
+date: "18th November 2020"
 output:
   html_document: 
     theme: default
@@ -9,14 +9,24 @@ output:
 ---
 
 ```{r, setup, include = FALSE}
-knitr::opts_chunk$set(echo = FALSE, fig.align = 'center')
+knitr::opts_chunk$set(echo = FALSE, fig.align = 'center',warning=FALSE, message=FALSE)
 ```
 
 ```{r, load-packages, include = FALSE}
 # load packages
+library(tibble)
+library(ggplot2)
+library(rpart)
+library(rpart.plot)
+library(caret)
+library(dbplyr)
+library(skimr)
+library(pROC)
+library(MLeval)
+library(ROSE)
 ```
 
-```{r make-data, warning = FALSE, message = FALSE}
+```{r make-data,  warning = FALSE, message = FALSE}
 # read data and subset
 source("make-data.R")
 ```
@@ -31,46 +41,219 @@ cc = data.table::fread("data/cc.csv.gz")
 cc_sub = data.table::fread("data/cc-sub.csv")
 ```
 
+
+
 ***
 
 ## Abstract
 
-> Abstract text goes here.
+> Introduction: Gives a Brief Overview of the Project   
+
+> Methods : Discusses about the Data, Various Preprocessing Techniques, and the different   Models under consideration
+
+> Results : Exhibits the result of the models experimented in the Methods              section
+
+> Discussion: States the best model that can be used and the vitality of the results.
 
 ***
 
 ## Introduction
 
-Write your introduction here.
+With the advent of cashless transactions, it is important that customers don't get charged for transactions not willfully initiated by them. Fraudulent transactions are a menace and there are countless instances where customers are tricked into making transactions via social engineering or unknowingly by using RFID. As part of this project I plan to use machine learning techniques to determine fraudulent transactions as most of them have a certain pattern. The dataset contains transactions made by credit cards in September 2013 by european cardholders.
+
+#### Perforing a Univariate Analysis on the data using the skimr package to understand the different types of variables and their characteristics:
+
+```{r}
+
+skimr::skim(cc_sub)
+
+```
 
 ***
 
 ## Methods
 
-Describe the methods used in this section.
+1. Splitting the Data into Train and Testing Splits
+2. Converting The Class column (Response Variable: The variable that needs to be predicted) into Factors before feeding it to the algorithms.
+3. Upsampling the Minority Class and Downsampling the Majority Class to Balance the Training Data
+4. Using a 5 Fold Cross Validation Strategy 
+5. Training the Models on Training Data
+6. Calculating the Accuracy, ROC-AUC and AUC-PRC of All the Models
+
 
 ### Data
 
-Specifically describe the data and how it is used here.
+
+This dataset presents transactions that occurred in two days, where we have 492 frauds out of 284,807 transactions. The data is highly unbalanced, the positive class (frauds) account for 0.172% of all transactions.
+
+The features contains only numerical input variables which are the result of a PCA transformation. Unfortunately, due to confidentiality issues, the original features and more background information about the data are hidden. Features V1, V2, … V28 are the principal components obtained with PCA, the only features which have not been transformed with PCA are 'Time' and 'Amount'.
+
+
+
+
+```{r}
+
+trn_idx = sample(nrow(cc_sub), size = 0.8 * nrow(cc_sub))
+trn = cc_sub[trn_idx, ]
+tst = cc_sub[-trn_idx, ]
+```
+
+
+```{r}
+
+trn$Class <- factor(trn$Class)
+tst$Class <- factor(tst$Class)
+trn
+```
+
+>Looking at the Imbalance in the Training Data
+
+```{r}
+
+plot(table(trn$Class), ylim = c(1, 20000), col = 6,  xlab = 'Type of Transaction' , ylab = 'Number of Transactions',  pch = 23, log = 'y')
+
+```
+
+
+> There is a clear imbalance between, the fraud class and the genuine class. Next step is, Upsampling the Minority Class and Downsampling the Majority Class to Balance the Training Data. Now, looking at the Balanced Train Data
+
+```{r}
+trn_smple = ovun.sample(Class ~ ., data = trn, method = "both")$data
+plot(table(trn_smple$Class), ylim = c(1, 25000), col = 7,  xlab = 'Type of Transaction' , ylab = 'Number of Transactions',  pch = 23, log = 'y')
+
+
+```
+
+
+```{r}
+
+cv_5 = trainControl(method = "cv", number = 5, savePredictions = T, summaryFunction=twoClassSummary, classProbs=T)
+
+
+```
 
 ### Modeling
 
-Discuss your modeling and validation strategy here.
+
+
+#### 1.  K-Nearest Neighbours Classifier
+
+Code : hdd_knn_mod = train(form = Class~., data = trn_smple, method = "knn",  trControl = cv_5, tuneLength = 15 )
+
+Initial Results with Cross Validation:
+
+```{r}
+hdd_knn_mod = train(form = Class~., data = trn_smple, method = "knn",  trControl = cv_5, tuneLength = 15 )
+
+hdd_knn_mod$results
+```
+#### 2. Decision Tree Classifier
+
+Code: hd_tree_mod = train(form = Class~., data = trn_smple, method = "rpart",  trControl = cv_5, tuneLength = 15 )
+
+Initial Results with Cross Validation:
+
+```{r}
+hd_tree_mod = train(form = Class~., data = trn_smple, method = "rpart",  trControl = cv_5, tuneLength = 15 )
+hd_tree_mod$results
+```
+
+#### 3.  Logistic Regression 
+
+Code : hd_glm_mod = train(form = Class~., data = trn_smple, method = "glm",  trControl = cv_5 )
+
+Initial Results with Cross Validation:
+
+```{r}
+hd_glm_mod = train(form = Class~., data = trn_smple, method = "glm",  trControl = cv_5)
+
+hd_glm_mod$results
+
+```
+
+
+#### 4.  Naive Bayes Classifier
+
+hd_nb_mod = train(form = Class~., data = trn_smple, method = "naive_bayes", trControl = cv_5 )
+
+Initial Results with Cross Validation:
+
+```{r}
+hd_nb_mod = train(form = Class~., data = trn_smple, method = "naive_bayes", trControl = cv_5 )
+hd_nb_mod$results
+
+```
+
+
+
 
 ***
 
 ## Results
 
-State your results here.
+```{r}
+
+#Defining a Function to Calculate Accuracy
+
+calc_accuracy = function(actual, predicted) {
+  mean(actual == predicted)
+}
+```
+
+#### K Nearest Neighbours Classifier
+```{r}
+
+knna = calc_accuracy(actual = tst$Class , predicted =  predict(hdd_knn_mod, tst, type = 'raw'))
+sprintf ("The Accuracy of KNN  Classifier is %f", knna)
+
+res <- evalm(hdd_knn_mod)
+```
+
+#### Decision Tree Classifier
+
+```{r}
+tree = calc_accuracy(actual = tst$Class , predicted =  predict(hd_tree_mod, tst, type = 'raw'))
+sprintf ("The Accuracy of Decision Tree Classifier is %f:", tree) 
+res2 <- evalm(hd_tree_mod)
+```
+
+#### Logistic Regression Classifier
+```{r}
+glma = calc_accuracy(actual = tst$Class , predicted =  predict(hd_glm_mod, tst, type = 'raw'))
+sprintf ("The Accuracy of Logistic Regression is %f", glma)
+res3 <- evalm(hd_glm_mod)
+```
+
+#### Naive Bayes Classifier
+```{r}
+nbo = calc_accuracy(actual = tst$Class , predicted =  predict(hd_nb_mod, tst, type = 'raw'))
+sprintf ("The Accuracy of Naive Bayes Classifier is %f", nbo)
+res4 <- evalm(hd_nb_mod)
+```
+
+
 
 ***
 
 ## Discussion
 
-Discuss your results here.
+The decison tree classifier can be used as the final model. Talking about interpretation of these results, the metrics being used to compare different models in our case are Accuracy, AUC-ROC and AUC-PR.
+
+The performance of the Decision Tree Classifier is the best for the following reasons:
+
+AUC-ROC Value: 1.00;
+AUC-PR Value: 0.97;
+Accuracy: 99.88%
+
+
+In simpler words, the user of this tool can confidently detect fraudulent transactions with a success rate of 99.88%, which is almost perfect for a classifier. 
 
 ***
 
 ## Appendix
 
-Place potential additional information here.
+Data Dictionary : 
+
+V1 - V28 : Features V1, V2, … V28 are the principal components obtained with PCA.
+Time : Feature 'Time' contains the seconds elapsed between each transaction and the first transaction in the dataset. 
+Amount : The feature 'Amount' is the transaction Amount
